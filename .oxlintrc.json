@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "options": {
+    "typeAware": true
+  },
+  "plugins": ["import", "typescript", "unicorn"],
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "rules": {
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "no-unused-vars": ["error", { "ignorePattern": "^_" }],
+    "typescript/no-explicit-any": "error",
+    "typescript/ban-ts-comment": ["error", { "allowWithDescription": true }]
+  },
+  "ignorePatterns": [
+    "node_modules/**",
+    "build/**",
+    ".react-router/**",
+    "*.css",
+    "*.svg",
+    "*.ico",
+    ".git/**",
+    "scripts/**"
+  ]
+}
