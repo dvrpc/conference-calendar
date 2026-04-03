@@ -3,7 +3,7 @@
   "editor.defaultFormatter": "oxc.oxc-vscode",
   "editor.codeActionsOnSave": {
     "source.format.oxc": "always",
-    "source.fixAll": "always",
+    "source.fixAll": "always"
   },
   "[typescript]": {
     "editor.defaultFormatter": "oxc.oxc-vscode"
@@ -22,5 +22,5 @@
   },
   "[css]": {
     "editor.defaultFormatter": "oxc.oxc-vscode"
-  },
+  }
 }

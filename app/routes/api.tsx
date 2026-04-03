@@ -9,12 +9,35 @@ interface LoaderArgs {
   request: Request;
 }
 
+function parseDateToRFC3339(dateStr: string | undefined): string | undefined {
+  if (!dateStr) return undefined;
+
+  const trimmed = dateStr.trim();
+  let date: Date | null = null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    date = new Date(trimmed + "T00:00:00");
+  } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+    const parts = trimmed.split("/");
+    const month = parseInt(parts[0], 10) - 1;
+    const day = parseInt(parts[1], 10);
+    const year = parseInt(parts[2], 10);
+    date = new Date(year, month, day, 0, 0, 0);
+  }
+
+  if (!date || isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  return date.toISOString();
+}
+
 export async function loader({ request }: LoaderArgs) {
   const url = new URL(request.url);
   const calendar = url.searchParams.get("calendar") || "primary";
   const maxResults = parseInt(url.searchParams.get("maxResults") || "1000", 10);
-  const timeMin = url.searchParams.get("timeMin") || undefined;
-  const timeMax = url.searchParams.get("timeMax") || undefined;
+  const timeMin = parseDateToRFC3339(url.searchParams.get("timeMin") || undefined);
+  const timeMax = parseDateToRFC3339(url.searchParams.get("timeMax") || undefined);
   const committee = url.searchParams.get("committee") || undefined;
   const tagsParam = url.searchParams.get("tags");
   const tags = tagsParam

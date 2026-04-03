@@ -45,9 +45,7 @@ export function TagsInput({ name, defaultValue = [] }: TagsInputProps) {
 
   return (
     <div>
-      {error && (
-        <p className="mb-2 text-sm text-red-600 dark:text-red-400">{error}</p>
-      )}
+      {error && <p className="mb-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
       <div className="flex flex-wrap gap-2">
         {selectedTags.map((tag) => (
           <span
