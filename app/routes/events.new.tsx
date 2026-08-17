@@ -3,7 +3,7 @@ import { redirect, Link } from "react-router";
 
 import { TagsInput } from "~/components/tags-input";
 import { UrlField } from "~/components/url-field";
-import { AVAILABLE_COMMITTEES } from "~/lib/constants";
+import { AVAILABLE_COMMITTEES, baseUrl } from "~/lib/constants";
 import { CALENDARS, createCalendarEvent } from "~/lib/google.server";
 import { requireDvrpcEmail, getAccessToken } from "~/lib/session.server";
 
@@ -65,7 +65,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const accessToken = await getAccessToken(request);
 
   if (!accessToken) {
-    throw redirect("/login");
+    throw redirect(baseUrl("login"));
   }
 
   return { calendars: CALENDARS };
@@ -76,7 +76,7 @@ export async function action({ request }: Route.ActionArgs) {
   const accessToken = await getAccessToken(request);
 
   if (!accessToken) {
-    throw redirect("/login");
+    throw redirect(baseUrl("login"));
   }
 
   const formData = await request.formData();
@@ -107,7 +107,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   await createCalendarEvent(accessToken, calendarId, eventData);
 
-  return redirect(`/?calendarId=${encodeURIComponent(calendarId)}`);
+  return redirect(`${baseUrl("")}?calendarId=${encodeURIComponent(calendarId)}`);
 }
 
 export default function CreateEvent({

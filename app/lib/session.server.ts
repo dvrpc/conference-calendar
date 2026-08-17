@@ -1,5 +1,7 @@
 import { createCookieSessionStorage, redirect } from "react-router";
 
+import { baseUrl } from "~/lib/constants";
+
 const ALLOWED_DOMAIN = "dvrpc.org";
 
 export interface User {
@@ -68,7 +70,7 @@ export async function requireUser(
   const user = await getUser(request);
   if (!user) {
     const searchParams = new URLSearchParams([["redirectTo", redirectTo]]);
-    throw redirect(`/login?${searchParams}`);
+    throw redirect(`${baseUrl("login")}?${searchParams}`);
   }
   return user;
 }
@@ -77,7 +79,7 @@ export async function requireDvrpcEmail(request: Request): Promise<User> {
   const user = await requireUser(request);
   const emailDomain = user.email.split("@")[1];
   if (emailDomain?.toLowerCase() !== ALLOWED_DOMAIN) {
-    throw redirect("/login?error=domain");
+    throw redirect(`${baseUrl("login")}?error=domain`);
   }
   return user;
 }
@@ -99,7 +101,7 @@ export async function createUserSession(
 
 export async function logout(request: Request) {
   const session = await getSession(request);
-  return redirect("/login", {
+  return redirect(baseUrl("login"), {
     headers: {
       "Set-Cookie": await sessionStorage.destroySession(session),
     },

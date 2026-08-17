@@ -1,3 +1,10 @@
+export function baseUrl(path: string): string {
+  const base = import.meta.env.VITE_BASE || "/";
+  const prefix = base.endsWith("/") ? base.slice(0, -1) : base;
+  const suffix = path.startsWith("/") ? path.slice(1) : path;
+  return `${prefix}/${suffix}`;
+}
+
 export const AVAILABLE_TAGS = [] as const;
 
 export const AVAILABLE_COMMITTEES = [

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { redirect, useFetcher, Link } from "react-router";
 
-import { AVAILABLE_COMMITTEES } from "~/lib/constants";
+import { AVAILABLE_COMMITTEES, baseUrl } from "~/lib/constants";
 import { fetchCalendarEvents, refreshAccessToken } from "~/lib/google.server";
 import { getUser, requireDvrpcEmail, updateAccessToken } from "~/lib/session.server";
 
@@ -29,7 +29,7 @@ export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
 
   if (!user?.accessToken) {
-    throw redirect("/login");
+    throw redirect(baseUrl("login"));
   }
 
   const calendars = [
@@ -199,7 +199,7 @@ export default function Dashboard({
         return;
       }
       if ("error" in data && data.error === "session_expired") {
-        window.location.href = "/login?error=session_expired";
+        window.location.href = `${baseUrl("login")}?error=session_expired`;
         return;
       }
       if ("error" in data) {
