@@ -228,6 +228,12 @@ VITE_BASE=/events/
 | `/auth/google/callback` | OAuth callback handler                  |
 | `/logout`               | Destroys session, redirects to `/login` |
 
+## Plugins
+
+| Plugin | Source | Purpose |
+| ------ | ------ | ------- |
+| `superpowers` | `git+https://github.com/obra/superpowers.git` | Enhanced agent capabilities and skills |
+
 ## Configuration Files
 
 | File                     | Purpose                                                                               |
