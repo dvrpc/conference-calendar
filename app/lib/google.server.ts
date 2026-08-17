@@ -193,7 +193,8 @@ export async function fetchCalendarEvents(
   calendarId: string,
   maxResults = 250,
   pageToken?: string,
-  timeMin?: string
+  timeMin?: string,
+  searchQuery?: string
 ): Promise<CalendarEventsResponse> {
   let now = timeMin || new Date().toISOString();
   if (/^\d{4}-\d{2}-\d{2}$/.test(now)) {
@@ -203,6 +204,10 @@ export async function fetchCalendarEvents(
 
   if (pageToken) {
     url += `&pageToken=${encodeURIComponent(pageToken)}`;
+  }
+
+  if (searchQuery) {
+    url += `&q=${encodeURIComponent(searchQuery)}`;
   }
 
   const response = await fetch(url, {

@@ -49,6 +49,7 @@ export async function loader({ request }: { request: Request }) {
   const calendarId = url.searchParams.get("calendarId") || calendars[0].id;
   const pageToken = url.searchParams.get("pageToken") || undefined;
   const startDate = url.searchParams.get("startDate") || undefined;
+  const searchQuery = url.searchParams.get("searchQuery") || undefined;
 
   let eventsResult: { events: CalendarEvent[]; nextPageToken?: string };
   try {
@@ -57,7 +58,8 @@ export async function loader({ request }: { request: Request }) {
       calendarId,
       20,
       pageToken,
-      startDate
+      startDate,
+      searchQuery
     );
   } catch (error) {
     console.error("Error fetching calendar events:", error);
@@ -71,7 +73,8 @@ export async function loader({ request }: { request: Request }) {
           calendarId,
           20,
           pageToken,
-          startDate
+          startDate,
+          searchQuery
         );
         return new Response(
           JSON.stringify({
@@ -80,6 +83,7 @@ export async function loader({ request }: { request: Request }) {
             nextPageToken: eventsResult.nextPageToken,
             selectedCalendarId: calendarId,
             startDate,
+            searchQuery,
           }),
           {
             status: 200,
@@ -104,6 +108,7 @@ export async function loader({ request }: { request: Request }) {
     nextPageToken: eventsResult.nextPageToken,
     selectedCalendarId: calendarId,
     startDate,
+    searchQuery,
   };
 }
 
@@ -152,6 +157,7 @@ export default function Dashboard({
     nextPageToken?: string;
     selectedCalendarId: string;
     startDate?: string;
+    searchQuery?: string;
   };
 }) {
   const {
@@ -160,6 +166,7 @@ export default function Dashboard({
     nextPageToken,
     selectedCalendarId,
     startDate,
+    searchQuery: initialSearchQuery,
   } = loaderData;
   const fetcher = useFetcher<{
     events: CalendarEvent[];
@@ -169,12 +176,19 @@ export default function Dashboard({
   const [selectedCalendar, setSelectedCalendar] = useState(selectedCalendarId);
   const [goToDate, setGoToDate] = useState(startDate || "");
   const [committedDate, setCommittedDate] = useState(startDate || "");
+  const [searchInput, setSearchInput] = useState(initialSearchQuery || "");
+  const [committedSearch, setCommittedSearch] = useState(initialSearchQuery || "");
   const isInitialRender = useRef(true);
 
   useEffect(() => {
     setGoToDate(startDate || "");
     setCommittedDate(startDate || "");
   }, [startDate]);
+
+  useEffect(() => {
+    setSearchInput(initialSearchQuery || "");
+    setCommittedSearch(initialSearchQuery || "");
+  }, [initialSearchQuery]);
 
   const events = fetcher.data?.events ?? initialEvents;
   const hasMore = fetcher.data?.nextPageToken ?? nextPageToken;
@@ -190,8 +204,11 @@ export default function Dashboard({
     if (committedDate) {
       params.set("startDate", committedDate);
     }
+    if (committedSearch) {
+      params.set("searchQuery", committedSearch);
+    }
     void fetcher.load(`/?index&${params.toString()}`);
-  }, [selectedCalendar, committedDate]);
+  }, [selectedCalendar, committedDate, committedSearch]);
 
   useEffect(() => {
     if (fetcher.data && typeof fetcher.data === "object") {
@@ -213,9 +230,13 @@ export default function Dashboard({
   const loadMore = () => {
     const nextToken = fetcher.data?.nextPageToken ?? nextPageToken;
     if (nextToken) {
-      void fetcher.load(
-        `/?index&calendarId=${encodeURIComponent(selectedCalendar)}&pageToken=${encodeURIComponent(nextToken)}`
-      );
+      const params = new URLSearchParams();
+      params.set("calendarId", selectedCalendar);
+      params.set("pageToken", nextToken);
+      if (committedSearch) {
+        params.set("searchQuery", committedSearch);
+      }
+      void fetcher.load(`/?index&${params.toString()}`);
     }
   };
 
@@ -276,6 +297,51 @@ export default function Dashboard({
       </div>
 
       <div className="mb-6 flex items-center gap-4">
+        <label
+          htmlFor="searchInput"
+          className="text-sm font-medium text-gray-700 dark:text-gray-300"
+        >
+          Search:
+        </label>
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="Search event titles..."
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              isInitialRender.current = true;
+              setCommittedSearch(searchInput.trim());
+              const params = new URLSearchParams();
+              params.set("calendarId", selectedCalendar);
+              if (searchInput.trim()) {
+                params.set("searchQuery", searchInput.trim());
+              }
+              void fetcher.load(`/?index&${params.toString()}`);
+            }
+          }}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+        />
+        {committedSearch && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearchInput("");
+              setCommittedSearch("");
+              isInitialRender.current = true;
+              const params = new URLSearchParams();
+              params.set("calendarId", selectedCalendar);
+              if (committedDate) {
+                params.set("startDate", committedDate);
+              }
+              void fetcher.load(`/?index&${params.toString()}`);
+            }}
+            className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          >
+            Clear
+          </button>
+        )}
         <label htmlFor="goToDate" className="text-sm font-medium text-gray-700 dark:text-gray-300">
           Go to date:
         </label>
@@ -291,6 +357,9 @@ export default function Dashboard({
               const params = new URLSearchParams();
               params.set("calendarId", selectedCalendar);
               params.set("startDate", e.target.value);
+              if (committedSearch) {
+                params.set("searchQuery", committedSearch);
+              }
               void fetcher.load(`/?index&${params.toString()}`);
             }
           }}
@@ -302,6 +371,9 @@ export default function Dashboard({
               params.set("calendarId", selectedCalendar);
               if (goToDate) {
                 params.set("startDate", goToDate);
+              }
+              if (committedSearch) {
+                params.set("searchQuery", committedSearch);
               }
               void fetcher.load(`/?index&${params.toString()}`);
             }
@@ -315,7 +387,12 @@ export default function Dashboard({
               setGoToDate("");
               setCommittedDate("");
               isInitialRender.current = true;
-              void fetcher.load(`/?index&calendarId=${encodeURIComponent(selectedCalendar)}`);
+              const params = new URLSearchParams();
+              params.set("calendarId", selectedCalendar);
+              if (committedSearch) {
+                params.set("searchQuery", committedSearch);
+              }
+              void fetcher.load(`/?index&${params.toString()}`);
             }}
             className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           >
@@ -326,7 +403,11 @@ export default function Dashboard({
 
       {events.length === 0 && !isLoading ? (
         <div className="rounded-lg border border-gray-200 bg-white p-8 text-center dark:border-gray-700 dark:bg-gray-900">
-          <p className="text-gray-500 dark:text-gray-400">No upcoming events found.</p>
+          <p className="text-gray-500 dark:text-gray-400">
+            {committedSearch
+              ? `No events found matching "${committedSearch}".`
+              : "No upcoming events found."}
+          </p>
         </div>
       ) : (
         <div>
