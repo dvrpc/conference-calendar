@@ -1,198 +1,191 @@
 # Agent Guidelines for conference-calendar-admin
 
-This document provides guidelines and conventions for agents working on this codebase.
+## CRITICAL: Run All Commands in Dev Container
 
-## CRITICAL: Always Run Commands in Dev Container
-
-**You MUST execute all commands inside the devcontainer via WSL. Never run npm, git, or other commands directly on Windows.**
-
-Always use this pattern for every command:
+Never run `npm`, `git`, or other commands directly on Windows. Always execute inside the devcontainer via WSL:
 
 ```bash
 wsl docker exec -i conference-calendar-admin bash -c "cd /workspaces/conference-calendar-admin && <command>"
 ```
 
-Or connect to the container interactively:
+Or connect interactively:
 
 ```bash
 wsl docker exec -i conference-calendar-admin bash
-# Then run commands inside the container
+cd /workspaces/conference-calendar-admin
+npm ci --legacy-peer-deps  # install deps if needed
 ```
-
-## Dev Container Setup
-
-1. Open default WSL and connect to the running container: `wsl docker exec -i conference-calendar-admin bash`
-2. Set workspace: `cd /workspaces/conference-calendar-admin`
-3. Install dependencies if needed: `npm ci --legacy-peer-deps`
 
 ## Project Overview
 
-- **Framework**: React Router v7 (Remix-based full-stack framework)
-- **Language**: TypeScript (strict mode)
-- **Styling**: Tailwind CSS v4
-- **Bundler**: Vite
-- **Runtime**: Node.js with SSR support
+- **Framework**: React Router v8 (Remix-based full-stack framework, SSR enabled)
+- **Language**: TypeScript 7 (strict mode, `verbatimModuleSyntax`)
+- **Styling**: Tailwind CSS v4 (CSS-first config with `@import "tailwindcss"`)
+- **Bundler**: Vite 8
+- **Formatter**: oxfmt (not Prettier)
+- **Linter**: oxlint (not ESLint)
 
 ## Commands
 
-### Development
+All commands must run inside the devcontainer (see above). The full workflow:
 
 ```bash
-npm run dev          # Start development server with HMR (http://localhost:5173)
+npm run format && npm run lint && npm run typecheck
 ```
 
-### Building
+| Command                | Purpose                                                                   |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `npm run dev`          | Start dev server with HMR (`--host` flag, accessible on `localhost:5173`) |
+| `npm run build`        | Production build                                                          |
+| `npm run start`        | Production server (uses `node --env-file=.env`, requires build first)     |
+| `npm run typecheck`    | React Router type generation + `tsc`                                      |
+| `npm run format`       | Format all code with oxfmt (`--write .`)                                  |
+| `npm run format:check` | Check formatting without modifying files                                  |
+| `npm run lint`         | Run oxlint                                                                |
+| `npm run lint:fix`     | Auto-fix linting issues                                                   |
 
-```bash
-npm run build        # Build for production
-npm run start        # Start production server (after build)
+## File Structure
+
+```
+app/
+├── auth/
+│   ├── login.tsx              # Login page with Google OAuth button
+│   ├── google/callback.ts     # OAuth callback handler (server-only)
+│   └── logout.ts              # Session destruction
+├── components/
+│   ├── tags-input.tsx         # Freeform tag input, max 4 tags
+│   └── url-field.tsx          # URL input that parses <a> tags
+├── lib/
+│   ├── constants.ts           # baseUrl(), AVAILABLE_TAGS, AVAILABLE_COMMITTEES
+│   ├── google.server.ts       # Google Calendar API + OAuth + Service Account (494 lines)
+│   └── session.server.ts      # Cookie session management (User, getUser, requireDvrpcEmail)
+├── routes/
+│   ├── events.tsx             # Events layout (auth check via getUser, NOT requireDvrpcEmail)
+│   ├── events._index.tsx      # Dashboard - event listing with pagination
+│   ├── events.new.tsx         # Create event page
+│   ├── events.$eventId.tsx    # Edit event page
+│   └── api.tsx                # Public API (read-only, no auth, uses service account)
+├── app.css                    # Tailwind v4 import + custom theme
+├── root.tsx                   # Root layout + ErrorBoundary
+└── routes.ts                  # Route configuration
 ```
 
-### Type Checking
+## Key Architecture
 
-```bash
-npm run typecheck    # Run TypeScript type checking + React Router type generation
+### Routing & URL Prefix
+
+All routes are served under the `VITE_BASE` prefix (default: `/events/`). The `baseUrl()` helper in `lib/constants.ts` constructs correct paths:
+
+```typescript
+import { baseUrl } from "~/lib/constants";
+// baseUrl("/new") → "/events/new"
 ```
 
-### Formatting & Linting
+Route hierarchy: `events.tsx` is a layout wrapping `_index`, `new`, and `$eventId`. The `api` route is separate (no layout, no auth).
 
-```bash
-npm run format       # Format all code with oxfmt
-npm run format:check # Check formatting without modifying files
-npm run lint         # Run oxlint to verify code quality
-npm run lint:fix     # Auto-fix linting issues
-```
+### Authentication Strategy
 
-### Testing
+Two auth patterns are used:
 
-This project does not have a test suite configured. If adding tests:
+1. **`events.tsx` layout**: Calls `getUser()` (non-enforcing). If no user, renders a login prompt instead of redirecting. Child routes handle their own auth.
+2. **Child routes** (`_index`, `new`, `$eventId`): Each calls `requireDvrpcEmail()` in their loader, which redirects to `/login` if unauthenticated or enforces `@dvrpc.org` domain.
+3. **`api.tsx`**: No user auth. Uses a Google service account for read-only calendar access.
 
-- Use Vitest as the test runner (consistent with Vite)
-- Place test files alongside source files with `.test.ts` or `.test.tsx` suffix
-- Run single test: `npx vitest run path/to/test.test.ts`
+### Google Calendar Integration
 
-### Recommended Workflow
+**Two calendars:**
 
-```bash
-npm run format && npm run lint && npm run typecheck  # Format, lint, then typecheck
-```
+- `primary`: Main Conference Room
+- `partners`: External Partners
+
+**Extended properties** (stored in Google Calendar's `private` extended properties):
+
+- `tag1` through `tag4`: Event tags (max 4)
+- `committee`: Committee shortcode
+
+**Available committees** (from `lib/constants.ts`):
+
+| Code     | Name                                      |
+| -------- | ----------------------------------------- |
+| `BOARD`  | The DVRPC Board                           |
+| `RTC`    | Regional Technical Committee              |
+| `PPTF`   | Public Participation Task Force           |
+| `DVGMTF` | Delaware Valley Goods Movement Task Force |
+| `IREG`   | Information Resources Exchange Group      |
+| `TOTF`   | Transportation Operations Task Force      |
+| `RSTF`   | Regional Safety Task Force                |
+
+**`AVAILABLE_TAGS`** is currently an empty array (`[]`). The tags system is structurally present but has no predefined suggestions.
+
+### Dual Auth in `lib/google.server.ts`
+
+- **User OAuth**: For admin actions (create/update events). Access + refresh tokens stored in session cookie.
+- **Service Account**: For the public API (read-only). Reads `key.json` from disk, signs JWT with RS256.
 
 ## Code Style
 
-### oxfmt Configuration
+### oxfmt Configuration (`.oxfmtrc.json`)
 
-- **Print width**: 100 characters
-- **Tab width**: 2 spaces (no tabs)
-- **Quotes**: Double quotes
-- **Semicolons**: Required
-- **Trailing commas**: ES5 style
-- **End of line**: LF (Unix style)
-
-### Import Sorting
-
-Imports are automatically sorted by oxfmt:
-
-1. React Router packages (`react-router`, `@react-router/*`)
-2. External packages (`@/*`, path aliases `~`)
-3. Parent directory imports (`../`)
-4. Current directory imports (`./`)
-
-```typescript
-// Sorted automatically
-import { useState } from "react";
-import { Link, Outlet } from "react-router";
-import { SomeComponent } from "~/components/some-component";
-import type { Route } from "./+types/home";
-import "./styles.css";
-```
-
-### Tailwind CSS Class Sorting
-
-Tailwind classes are automatically sorted by oxfmt following the official class order:
-
-- Container modifiers (e.g., `container`, `mx-auto`)
-- Box model (e.g., `p-4`, `m-2`, `w-full`)
-- Layout (e.g., `flex`, `grid`, `hidden`)
-- Typography (e.g., `text-sm`, `font-bold`)
-- Borders, effects, filters, tables, transitions
-- Dark mode variants (`dark:`) are sorted with their corresponding class
+- Print width: 100, tab width: 2, double quotes, semicolons required
+- ES5 trailing commas, LF line endings
+- Imports auto-sorted: React Router packages → external → parent → sibling → index → styles
+- Tailwind classes auto-sorted (supports `clsx`, `cn`, `tw`, `cva`)
 
 ### TypeScript Conventions
 
-1. **Strict Mode**: TypeScript strict mode is enabled. Avoid `any`, use proper types.
-2. **Explicit Return Types**: Add return types to exported functions for clarity.
-3. **Type Imports**: Use `import type` for type-only imports (required due to `verbatimModuleSyntax`).
-
-```typescript
-// Correct
-import type { Route } from "./+types/root";
-// Avoid
-import { type Route } from "./+types/root";
-import { SomeComponent } from "./component";
-```
-
-### Import Conventions
-
-1. **Path Alias**: Use `~` to reference files within the `app` directory:
-
+1. **Strict mode** enabled. Avoid `any`.
+2. **`verbatimModuleSyntax`** requires `import type` for type-only imports:
    ```typescript
-   import { Welcome } from "~/welcome/welcome";
+   import type { Route } from "./+types/home"; // correct
+   import { type Route } from "./+types/home"; // avoid
    ```
-
-2. **Double Quotes**: Use double quotes for strings consistently.
+3. **Path alias**: Use `~` to reference files within `app/`:
+   ```typescript
+   import { SomeComponent } from "~/components/some-component";
+   ```
 
 ### Naming Conventions
 
-| Element          | Convention                  | Example                               |
-| ---------------- | --------------------------- | ------------------------------------- |
-| Files            | kebab-case                  | `home-page.tsx`, `api-utils.ts`       |
-| React Components | PascalCase                  | `HomePage`, `ConferenceCard`          |
-| Functions        | camelCase                   | `fetchConferences`, `handleSubmit`    |
-| Hooks            | camelCase with `use` prefix | `useConferences`, `useAuth`           |
-| Constants        | SCREAMING_SNAKE_CASE        | `MAX_ITEMS`, `API_BASE_URL`           |
-| Types/Interfaces | PascalCase                  | `Conference`, `UserProfile`           |
-| CSS Classes      | Tailwind utilities          | `className="flex items-center gap-4"` |
+| Element          | Convention           | Example                            |
+| ---------------- | -------------------- | ---------------------------------- |
+| Files            | kebab-case           | `home-page.tsx`, `api-utils.ts`    |
+| React Components | PascalCase           | `HomePage`, `ConferenceCard`       |
+| Functions        | camelCase            | `fetchConferences`, `handleSubmit` |
+| Hooks            | `use` prefix         | `useConferences`, `useAuth`        |
+| Constants        | SCREAMING_SNAKE_CASE | `MAX_ITEMS`, `API_BASE_URL`        |
+| Types            | PascalCase           | `Conference`, `UserProfile`        |
 
-### oxlint Rules
+### oxlint Rules (`.oxlintrc.json`)
 
 - **No `any`**: `@typescript-eslint/no-explicit-any` is enforced
-- **Unused Variables**: Allowed with underscore prefix (`_varName`) or caught errors
-- **Console**: Only `warn` and `error` allowed (no `console.log`)
-- **ts-expect-error**: Allowed with description comment
+- **Unused variables**: Allowed with `_` prefix or caught errors
+- **Console**: Only `warn` and `error` allowed
+- **`ts-expect-error`**: Allowed with description comment
 
-### React Router Patterns
+## React Router Patterns
 
-1. **Route Files**: Each route should export:
-   - `default` function for the page component
-   - `meta` function for meta tags
-   - `loader` function for server-side data loading
-   - `action` function for form handling
-   - `ErrorBoundary` for error handling
+Route files export:
 
-2. **Type Generation**: Routes auto-generate types. Import them:
+- `default` — Page component
+- `meta` — Meta tags
+- `loader` — Server-side data loading
+- `action` — Form handling
+- `ErrorBoundary` — Error handling
 
-   ```typescript
-   import type { Route } from "./+types/home";
-   ```
-
-3. **Link Component**: Use React Router's `<Link>` component for client-side navigation.
-
-### Styling with Tailwind CSS
-
-1. **Utility Classes**: Use Tailwind utility classes in `className` props.
-2. **Dark Mode**: Support dark mode with `dark:` prefix:
-   ```tsx
-   <div className="text-gray-700 dark:text-gray-200">
-   ```
-3. **Responsive Design**: Use breakpoints (`sm:`, `md:`, `lg:`, `xl:`).
-
-### Error Handling
-
-1. **ErrorBoundary**: Export an `ErrorBoundary` component in route files.
-2. **Route Errors**: Use `isRouteErrorResponse` to check for 404/500 errors.
-3. **Try/Catch**: Wrap async operations in try/catch blocks in loaders and actions.
+**Type generation**: Import auto-generated types from `./+types/<route>`:
 
 ```typescript
+import type { Route } from "./+types/events.new";
+
+export async function loader({ request }: Route.LoaderArgs) { ... }
+export async function action({ request }: Route.ActionArgs) { ... }
+```
+
+**Error boundary pattern**:
+
+```typescript
+import { isRouteErrorResponse } from "react-router";
+
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   if (isRouteErrorResponse(error)) {
     return <div>{error.statusText}</div>;
@@ -201,48 +194,17 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 }
 ```
 
-### File Structure
+## Styling
 
-```
-app/
-├── auth/              # Authentication routes (login, logout, OAuth callbacks)
-│   ├── login.tsx      # Login page with Google OAuth
-│   ├── google/        # Google OAuth handlers
-│   └── logout.ts      # Session destruction
-├── lib/               # Utility functions and helpers
-│   ├── session.server.ts  # Session management (getUser, requireUser, requireDvrpcEmail)
-│   ├── google.server.ts   # Google OAuth URL & token handling
-│   └── constants.ts       # App constants
-├── routes/            # Route files (file-based routing via routes.ts)
-│   ├── events.tsx           # Events layout (auth check)
-│   ├── events._index.tsx   # Dashboard page (/)
-│   ├── events.new.tsx       # Create event page (/new)
-│   ├── events.$eventId.tsx # Edit event page (/:eventId)
-│   └── api.tsx             # API routes (/api)
-├── components/        # Shared React components
-│   ├── tags-input.tsx # Tag input component
-│   └── url-field.tsx  # URL input component
-├── styles/            # Global CSS files
-├── root.tsx           # Root layout component
-└── routes.ts          # Route configuration
-```
-
-## Google Calendar Integration
-
-Events use Google Calendar's extended properties to store custom data:
-
-- **Tags**: Up to 4 tags (stored as `tag1` through `tag4`)
-- **Committee**: Committee shortcode (stored as `committee`)
-
-The tag input component enforces a maximum of 4 tags with an error message when exceeded.
+- Use Tailwind utility classes in `className` props
+- Dark mode with `dark:` prefix
+- Responsive breakpoints: `sm:`, `md:`, `lg:`, `xl:`
 
 ## Authentication
 
-This project uses Google OAuth for authentication with domain restriction to `@dvrpc.org`.
+This project uses Google OAuth restricted to `@dvrpc.org`.
 
-### Environment Variables
-
-Set up Google OAuth credentials in `.env`:
+### Environment Variables (`.env`)
 
 ```bash
 GOOGLE_CLIENT_ID=your-google-client-id
@@ -250,59 +212,30 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 GOOGLE_REDIRECT_URI=http://localhost:5173/auth/google/callback
 GOOGLE_SERVICE_ACCOUNT_KEY_PATH=./key.json
 SESSION_SECRET=your-session-secret-at-least-32-characters
+VITE_BASE=/events/
 ```
 
 ### Auth Utilities
 
-- `lib/session.server.ts` - Session management with `getUser()`, `requireUser()`, `requireDvrpcEmail()`
-- `lib/google.server.ts` - Google OAuth URL generation and token handling
-
-### Protected Routes
-
-To protect a route, use the `requireDvrpcEmail()` function in the loader:
-
-```typescript
-export async function loader({ request }: { request: Request }) {
-  const user = await requireDvrpcEmail(request);
-  return { user };
-}
-```
+- `lib/session.server.ts`: `getUser()`, `requireUser()`, `requireDvrpcEmail()`, `createUserSession()`, `logout()`
+- `lib/google.server.ts`: `getGoogleAuthURL()`, `getGoogleUserFromCode()`, `refreshAccessToken()`
 
 ### Auth Routes
 
-| Route                   | Purpose                             |
-| ----------------------- | ----------------------------------- |
-| `/login`                | Login page with Google OAuth button |
-| `/auth/google/callback` | OAuth callback handler              |
-| `/logout`               | Logout and session destruction      |
-
-## Development Workflow
-
-Always run commands inside the devcontainer using WSL:
-
-```bash
-wsl docker exec -i conference-calendar-admin bash -c "cd /workspaces/conference-calendar-admin && npm run format && npm run lint && npm run typecheck"
-```
-
-Or run them interactively:
-
-```bash
-wsl docker exec -i conference-calendar-admin bash
-# Then run: npm run format && npm run lint && npm run typecheck
-```
-
-1. **Format**: Run `npm run format` to format code with oxfmt
-2. **Lint**: Run `npm run lint` to verify code quality
-3. **Type Check**: Run `npm run typecheck` to catch type errors
-4. **Build**: Run `npm run build` to create production build
+| Route                   | Purpose                                 |
+| ----------------------- | --------------------------------------- |
+| `/login`                | Login page with Google OAuth button     |
+| `/auth/google/callback` | OAuth callback handler                  |
+| `/logout`               | Destroys session, redirects to `/login` |
 
 ## Configuration Files
 
-| File                     | Purpose                                              |
-| ------------------------ | ---------------------------------------------------- |
-| `tsconfig.json`          | TypeScript configuration (strict mode, path aliases) |
-| `vite.config.ts`         | Vite bundler configuration                           |
-| `react-router.config.ts` | React Router framework settings                      |
-| `app/routes.ts`          | Route configuration                                  |
-| `oxfmtrc.json`           | oxfmt formatting rules                               |
-| `oxlintrc.json`          | oxlint linting rules                                 |
+| File                     | Purpose                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------- |
+| `tsconfig.json`          | TypeScript config (strict, `~/*` path alias)                                          |
+| `vite.config.ts`         | Vite config (Tailwind v4 plugin, React Router plugin, polling-based watch for Docker) |
+| `react-router.config.ts` | React Router config (`ssr: true`, `basename: VITE_BASE`)                              |
+| `app/routes.ts`          | Route configuration (layout + flat routes)                                            |
+| `.oxfmtrc.json`          | oxfmt formatting rules                                                                |
+| `.oxlintrc.json`         | oxlint linting rules                                                                  |
+| `.env.example`           | Template for environment variables                                                    |
