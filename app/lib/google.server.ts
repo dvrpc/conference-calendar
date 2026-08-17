@@ -195,7 +195,10 @@ export async function fetchCalendarEvents(
   pageToken?: string,
   timeMin?: string
 ): Promise<CalendarEventsResponse> {
-  const now = timeMin || new Date().toISOString();
+  let now = timeMin || new Date().toISOString();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(now)) {
+    now = `${now}T00:00:00.000Z`;
+  }
   let url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(now)}&maxResults=${maxResults}&singleEvents=true&orderBy=startTime&showDeleted=false`;
 
   if (pageToken) {
