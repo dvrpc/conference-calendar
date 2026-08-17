@@ -29,7 +29,7 @@ export async function loader({ request }: { request: Request }) {
   const user = await getUser(request);
 
   if (!user?.accessToken) {
-    throw redirect(baseUrl("login"));
+    throw redirect("/login");
   }
 
   const calendars = [

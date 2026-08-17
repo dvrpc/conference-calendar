@@ -1,7 +1,5 @@
 import { createCookieSessionStorage, redirect } from "react-router";
 
-import { baseUrl } from "~/lib/constants";
-
 const ALLOWED_DOMAIN = "dvrpc.org";
 
 export interface User {
@@ -63,14 +61,17 @@ export async function updateAccessToken(request: Request, accessToken: string): 
   return sessionStorage.commitSession(session);
 }
 
-export async function requireUser(
-  request: Request,
-  redirectTo: string = new URL(request.url).pathname
-): Promise<User> {
+export async function requireUser(request: Request, redirectTo?: string): Promise<User> {
+  if (!redirectTo) {
+    const pathname = new URL(request.url).pathname;
+    const basename = (import.meta.env.VITE_BASE || "/").replace(/\/+$/, "");
+    redirectTo =
+      basename && pathname.startsWith(basename) ? pathname.slice(basename.length) || "/" : pathname;
+  }
   const user = await getUser(request);
   if (!user) {
     const searchParams = new URLSearchParams([["redirectTo", redirectTo]]);
-    throw redirect(`${baseUrl("login")}?${searchParams}`);
+    throw redirect(`/login?${searchParams}`);
   }
   return user;
 }
@@ -79,7 +80,7 @@ export async function requireDvrpcEmail(request: Request): Promise<User> {
   const user = await requireUser(request);
   const emailDomain = user.email.split("@")[1];
   if (emailDomain?.toLowerCase() !== ALLOWED_DOMAIN) {
-    throw redirect(`${baseUrl("login")}?error=domain`);
+    throw redirect("/login?error=domain");
   }
   return user;
 }
@@ -101,7 +102,7 @@ export async function createUserSession(
 
 export async function logout(request: Request) {
   const session = await getSession(request);
-  return redirect(baseUrl("login"), {
+  return redirect("/login", {
     headers: {
       "Set-Cookie": await sessionStorage.destroySession(session),
     },

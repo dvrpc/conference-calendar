@@ -3,7 +3,7 @@ import { redirect, Link } from "react-router";
 
 import { TagsInput } from "~/components/tags-input";
 import { UrlField } from "~/components/url-field";
-import { AVAILABLE_COMMITTEES, baseUrl } from "~/lib/constants";
+import { AVAILABLE_COMMITTEES } from "~/lib/constants";
 import { fetchCalendarEvent, updateCalendarEvent } from "~/lib/google.server";
 import { requireDvrpcEmail, getAccessToken } from "~/lib/session.server";
 
@@ -84,7 +84,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const accessToken = await getAccessToken(request);
 
   if (!accessToken) {
-    throw redirect(baseUrl("login"));
+    throw redirect("/login");
   }
 
   const eventId = params.eventId;
@@ -92,13 +92,13 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const calendarId = url.searchParams.get("calendarId");
 
   if (!calendarId || !eventId) {
-    throw redirect(baseUrl(""));
+    throw redirect("/");
   }
 
   const event = await fetchCalendarEvent(accessToken, calendarId, eventId);
 
   if (!event) {
-    throw redirect(baseUrl(""));
+    throw redirect("/");
   }
 
   return { calendarId, event };
@@ -109,7 +109,7 @@ export async function action({ request, params }: Route.ActionArgs) {
   const accessToken = await getAccessToken(request);
 
   if (!accessToken) {
-    throw redirect(baseUrl("login"));
+    throw redirect("/login");
   }
 
   const formData = await request.formData();
@@ -141,7 +141,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 
   await updateCalendarEvent(accessToken, calendarId, _eventId!, eventData);
 
-  return redirect(`${baseUrl("")}?calendarId=${encodeURIComponent(calendarId)}`);
+  return redirect(`/?calendarId=${encodeURIComponent(calendarId)}`);
 }
 
 export default function EditEvent({

@@ -1,6 +1,5 @@
 import { redirect } from "react-router";
 
-import { baseUrl } from "~/lib/constants";
 import { getGoogleUserFromCode } from "~/lib/google.server";
 import { createUserSession } from "~/lib/session.server";
 
@@ -10,10 +9,10 @@ export async function loader({ request }: { request: Request }) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const error = url.searchParams.get("error");
-  const redirectTo = url.searchParams.get("state") || baseUrl("");
+  const redirectTo = url.searchParams.get("state") || "/";
 
   if (error || !code) {
-    return redirect(`${baseUrl("login")}?error=oauth`);
+    return redirect("/login?error=oauth");
   }
 
   try {
@@ -21,12 +20,12 @@ export async function loader({ request }: { request: Request }) {
     const emailDomain = user.email.split("@")[1];
 
     if (emailDomain?.toLowerCase() !== ALLOWED_DOMAIN) {
-      return redirect(`${baseUrl("login")}?error=domain`);
+      return redirect("/login?error=domain");
     }
 
     return createUserSession(user, redirectTo, accessToken, refreshToken);
   } catch (err) {
     console.error("Google OAuth error:", err);
-    return redirect(`${baseUrl("login")}?error=oauth`);
+    return redirect("/login?error=oauth");
   }
 }
