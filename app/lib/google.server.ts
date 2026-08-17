@@ -254,11 +254,11 @@ export async function fetchCalendarEvent(
 }
 
 export interface UpdateEventData {
-  summary: string;
+  summary?: string;
   description?: string;
   location?: string;
-  start: { dateTime?: string; date?: string };
-  end: { dateTime?: string; date?: string };
+  start?: { dateTime?: string; date?: string };
+  end?: { dateTime?: string; date?: string };
   tags?: string[];
   committee?: string;
 }
@@ -270,7 +270,12 @@ export async function updateCalendarEvent(
   eventData: UpdateEventData
 ): Promise<GoogleCalendarEvent> {
   const { tags, committee, ...rest } = eventData;
-  const body: Record<string, unknown> = { ...rest };
+  const body: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(rest)) {
+    if (value !== undefined) {
+      body[key] = value;
+    }
+  }
 
   const tag1 = tags?.[0] || "";
   const tag2 = tags?.[1] || "";
@@ -314,7 +319,12 @@ export async function createCalendarEvent(
   eventData: UpdateEventData
 ): Promise<GoogleCalendarEvent> {
   const { tags, committee, ...rest } = eventData;
-  const body: Record<string, unknown> = { ...rest };
+  const body: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(rest)) {
+    if (value !== undefined) {
+      body[key] = value;
+    }
+  }
 
   const tag1 = tags?.[0] || "";
   const tag2 = tags?.[1] || "";

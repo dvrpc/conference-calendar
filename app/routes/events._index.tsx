@@ -1,9 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { redirect, useFetcher, Link } from "react-router";
 
+import { TagsInput } from "~/components/tags-input";
 import { AVAILABLE_COMMITTEES, baseUrl } from "~/lib/constants";
-import { fetchCalendarEvents, refreshAccessToken } from "~/lib/google.server";
-import { getUser, requireDvrpcEmail, updateAccessToken } from "~/lib/session.server";
+import { fetchCalendarEvents, refreshAccessToken, updateCalendarEvent } from "~/lib/google.server";
+import {
+  getAccessToken,
+  getUser,
+  requireDvrpcEmail,
+  updateAccessToken,
+} from "~/lib/session.server";
 
 interface CalendarEvent {
   id: string;
@@ -112,6 +118,54 @@ export async function loader({ request }: { request: Request }) {
   };
 }
 
+export async function action({ request }: { request: Request }) {
+  await requireDvrpcEmail(request);
+  const accessToken = await getAccessToken(request);
+  if (!accessToken) {
+    return { error: "session_expired" };
+  }
+
+  const formData = await request.formData();
+  const eventIdsRaw = formData.get("eventIds");
+  const calendarId = (formData.get("calendarId") as string) || "primary";
+  const tagsParam = formData.get("tags") as string | null;
+  const committeeParam = formData.get("committee") as string | null;
+
+  if (!eventIdsRaw || typeof eventIdsRaw !== "string") {
+    return { error: "No events selected" };
+  }
+
+  const eventIds = eventIdsRaw.split(",").filter((id) => id.trim());
+  if (eventIds.length === 0) {
+    return { error: "No events selected" };
+  }
+
+  const tags = tagsParam ? tagsParam.split(",").filter((t) => t.trim()) : [];
+
+  const committee = committeeParam || undefined;
+
+  const results = await Promise.allSettled(
+    eventIds.map((eventId) =>
+      updateCalendarEvent(accessToken, calendarId, eventId, {
+        tags,
+        committee,
+      })
+    )
+  );
+
+  const failures = results.filter((r) => r.status === "rejected");
+  if (failures.length > 0) {
+    console.error(
+      `Failed to update ${failures.length} event(s):`,
+      failures.map((f) => (f as PromiseRejectedResult).reason)
+    );
+  }
+
+  return redirect(
+    `/events/?calendarId=${encodeURIComponent(calendarId)}&bulkUpdated=${eventIds.length - failures.length}`
+  );
+}
+
 function formatDate(dateStr: string): string {
   const [year, month, day] = dateStr.split("T")[0].split("-");
   const months = [
@@ -179,6 +233,28 @@ export default function Dashboard({
   const [searchInput, setSearchInput] = useState(initialSearchQuery || "");
   const [committedSearch, setCommittedSearch] = useState(initialSearchQuery || "");
   const isInitialRender = useRef(true);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const bulkFetcher = useFetcher();
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === events.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(events.map((e) => e.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     setGoToDate(startDate || "");
@@ -227,6 +303,15 @@ export default function Dashboard({
     }
   }, [fetcher.data]);
 
+  useEffect(() => {
+    if (bulkFetcher.data && typeof bulkFetcher.data === "object") {
+      const data = bulkFetcher.data as Record<string, unknown>;
+      if (!("error" in data)) {
+        setSelectedIds(new Set());
+      }
+    }
+  }, [bulkFetcher.data]);
+
   const loadMore = () => {
     const nextToken = fetcher.data?.nextPageToken ?? nextPageToken;
     if (nextToken) {
@@ -241,12 +326,20 @@ export default function Dashboard({
   };
 
   return (
-    <div>
+    <div className="pb-24">
       <title>Dashboard - Conference Calendar Admin</title>
       <div className="mb-6 flex items-center justify-between">
-        <h2 className="font-heading text-2xl font-bold text-gray-900 dark:text-white">
-          Upcoming Events
-        </h2>
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={selectedIds.size === events.length && events.length > 0}
+            onChange={toggleSelectAll}
+            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          />
+          <h2 className="font-heading text-2xl font-bold text-gray-900 dark:text-white">
+            Upcoming Events
+          </h2>
+        </div>
         <div className="flex items-center gap-4">
           {isLoading && (
             <svg
@@ -422,106 +515,118 @@ export default function Dashboard({
               return (
                 <div
                   key={event.id}
-                  className="rounded-lg border border-gray-200 bg-white p-6 transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-900"
+                  className={`rounded-lg border bg-white p-6 transition-shadow hover:shadow-md dark:bg-gray-900 ${
+                    selectedIds.has(event.id)
+                      ? "border-blue-400 ring-1 ring-blue-400 dark:border-blue-500 dark:ring-blue-500"
+                      : "border-gray-200 dark:border-gray-700"
+                  }`}
                 >
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(event.id)}
+                      onChange={() => toggleSelect(event.id)}
+                      className="mt-1 h-4 w-4 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
                     <div className="flex-1">
-                      <div className="mb-2 text-sm font-bold text-gray-600 dark:text-gray-300">
-                        {isAllDay ? (
-                          <>
-                            {formatDate(startDate!)}
-                            {isMultiDay && ` - ${formatDate(endDate!)}`}
-                          </>
-                        ) : isMultiDay ? (
-                          <>
-                            {formatDate(startDate!)} - {formatDate(endDate!)}
-                          </>
-                        ) : (
-                          <>
-                            {formatDate(startDate!)} {formatTime(startDate!)} -{" "}
-                            {formatTime(endDate!)}
-                          </>
-                        )}
-                      </div>
-                      <Link
-                        to={`/${event.id}?calendarId=${encodeURIComponent(selectedCalendar)}`}
-                        className="font-heading text-xl font-semibold text-gray-900 hover:text-blue-600 dark:text-white dark:hover:text-blue-400"
-                      >
-                        {event.summary}
-                      </Link>
-                      {event.description &&
-                        (() => {
-                          const url = extractUrlFromHtml(event.description);
-                          if (url) {
-                            return (
-                              <a
-                                href={url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="mt-1 block text-sm text-blue-600 underline hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                              >
-                                {url}
-                              </a>
-                            );
-                          }
-                          return null;
-                        })()}
-                      {event.location && (
-                        <div className="mt-2 flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
-                          <svg
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                            />
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                            />
-                          </svg>
-                          <span>{event.location}</span>
-                        </div>
-                      )}
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {((ext) => {
-                          const committeeCode = ext?.private?.committee;
-                          const committee = AVAILABLE_COMMITTEES.find(
-                            (c) => c.code === committeeCode
-                          );
-                          return committee ? (
-                            <span className="inline-block rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                              {committee.name}
-                            </span>
-                          ) : null;
-                        })(event.extendedProperties)}
-                        {((ext) => {
-                          const tags = [
-                            ext?.private?.tag1,
-                            ext?.private?.tag2,
-                            ext?.private?.tag3,
-                            ext?.private?.tag4,
-                          ].filter((t) => t && t.trim()) as string[];
-                          return tags.length > 0 ? (
+                      <div className="flex items-start justify-between">
+                        <div className="mb-2 text-sm font-bold text-gray-600 dark:text-gray-300">
+                          {isAllDay ? (
                             <>
-                              {tags.map((tag: string) => (
-                                <span
-                                  key={tag}
-                                  className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
+                              {formatDate(startDate!)}
+                              {isMultiDay && ` - ${formatDate(endDate!)}`}
                             </>
-                          ) : null;
-                        })(event.extendedProperties)}
+                          ) : isMultiDay ? (
+                            <>
+                              {formatDate(startDate!)} - {formatDate(endDate!)}
+                            </>
+                          ) : (
+                            <>
+                              {formatDate(startDate!)} {formatTime(startDate!)} -{" "}
+                              {formatTime(endDate!)}
+                            </>
+                          )}
+                        </div>
+                        <Link
+                          to={`/${event.id}?calendarId=${encodeURIComponent(selectedCalendar)}`}
+                          className="font-heading text-xl font-semibold text-gray-900 hover:text-blue-600 dark:text-white dark:hover:text-blue-400"
+                        >
+                          {event.summary}
+                        </Link>
+                        {event.description &&
+                          (() => {
+                            const url = extractUrlFromHtml(event.description);
+                            if (url) {
+                              return (
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="mt-1 block text-sm text-blue-600 underline hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                >
+                                  {url}
+                                </a>
+                              );
+                            }
+                            return null;
+                          })()}
+                        {event.location && (
+                          <div className="mt-2 flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                              />
+                            </svg>
+                            <span>{event.location}</span>
+                          </div>
+                        )}
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {((ext) => {
+                            const committeeCode = ext?.private?.committee;
+                            const committee = AVAILABLE_COMMITTEES.find(
+                              (c) => c.code === committeeCode
+                            );
+                            return committee ? (
+                              <span className="inline-block rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                                {committee.name}
+                              </span>
+                            ) : null;
+                          })(event.extendedProperties)}
+                          {((ext) => {
+                            const tags = [
+                              ext?.private?.tag1,
+                              ext?.private?.tag2,
+                              ext?.private?.tag3,
+                              ext?.private?.tag4,
+                            ].filter((t) => t && t.trim()) as string[];
+                            return tags.length > 0 ? (
+                              <>
+                                {tags.map((tag: string) => (
+                                  <span
+                                    key={tag}
+                                    className="inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </>
+                            ) : null;
+                          })(event.extendedProperties)}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -540,6 +645,67 @@ export default function Dashboard({
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {selectedIds.size > 0 && (
+        <div className="fixed right-0 bottom-0 left-0 z-50 border-t border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900">
+          <bulkFetcher.Form method="post">
+            <input type="hidden" name="bulkAction" value="apply" />
+            <input type="hidden" name="eventIds" value={Array.from(selectedIds).join(",")} />
+            <input type="hidden" name="calendarId" value={selectedCalendar} />
+            <div className="mx-auto flex max-w-5xl flex-wrap items-end gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {selectedIds.size} event{selectedIds.size !== 1 ? "s" : ""} selected
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  Clear
+                </button>
+              </div>
+              <div className="min-w-[200px] flex-1">
+                <label
+                  htmlFor="bulk-tags"
+                  className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400"
+                >
+                  Tags (replaces existing)
+                </label>
+                <TagsInput name="tags" />
+              </div>
+              <div>
+                <label
+                  htmlFor="bulk-committee"
+                  className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400"
+                >
+                  Committee (replaces existing)
+                </label>
+                <select
+                  id="bulk-committee"
+                  name="committee"
+                  defaultValue=""
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                >
+                  <option value="">— None —</option>
+                  {AVAILABLE_COMMITTEES.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="submit"
+                disabled={bulkFetcher.state !== "idle"}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {bulkFetcher.state !== "idle" ? "Applying..." : "Apply"}
+              </button>
+            </div>
+          </bulkFetcher.Form>
         </div>
       )}
     </div>
