@@ -5,7 +5,7 @@ export function baseUrl(path: string): string {
   return `${prefix}/${suffix}`;
 }
 
-export const AVAILABLE_TAGS = [] as const;
+export const AVAILABLE_TAGS: string[] = [];
 
 export const AVAILABLE_COMMITTEES = [
   { code: "BOARD", name: "The DVRPC Board" },
