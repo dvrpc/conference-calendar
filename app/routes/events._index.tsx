@@ -60,6 +60,7 @@ export async function loader({ request }: { request: Request }) {
       startDate
     );
   } catch (error) {
+    console.error("Error fetching calendar events:", error);
     if (error instanceof Error && error.message.includes("Unauthorized") && user.refreshToken) {
       const newTokens = await refreshAccessToken(user.refreshToken);
       if (newTokens) {
@@ -89,11 +90,12 @@ export async function loader({ request }: { request: Request }) {
           }
         );
       }
+      return new Response(JSON.stringify({ error: "session_expired" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     }
-    return new Response(JSON.stringify({ error: "session_expired" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    throw error;
   }
 
   return {
