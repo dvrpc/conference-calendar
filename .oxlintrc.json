@@ -12,7 +12,7 @@
     "no-console": ["warn", { "allow": ["warn", "error"] }],
     "no-unused-vars": ["error", { "ignorePattern": "^_" }],
     "typescript/no-explicit-any": "error",
-    "typescript/ban-ts-comment": ["error", { "allowWithDescription": true }]
+    "typescript/ban-ts-comment": ["error", { "ts-expect-error": "allow-with-description" }]
   },
   "ignorePatterns": [
     "node_modules/**",
