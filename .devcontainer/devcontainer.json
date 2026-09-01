@@ -3,7 +3,7 @@
   "image": "mcr.microsoft.com/devcontainers/base:trixie",
   "runArgs": ["--name", "conference-calendar-admin"],
   "features": {
-    "ghcr.io/devcontainers/features/node:1": {
+    "ghcr.io/devcontainers/features/node:2": {
       "version": "24"
     }
   },
